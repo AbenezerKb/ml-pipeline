@@ -61,4 +61,85 @@ class DataPreparation:
         
         return df
     
+    def split_data(self, df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
+        from sklearn.model_selection import train_test_split
+        
+        test_size = self.data_config['test_size']
+        random_state = self.data_config['random_state']
+        
+        logger.info(f"Splitting data with test_size={test_size}")
+        
+        train_df, test_df = train_test_split(
+            df,
+            test_size=test_size,
+            random_state=random_state,
+            stratify=df[self.config['features']['target']] if self.config['features']['target'] in df.columns else None
+        )
+        
+        return train_df, test_df
     
+    def save_processed_data(self, train_df: pd.DataFrame, test_df: pd.DataFrame):       
+        logger.info("Saving processed data to MongoDB")
+        
+        timestamp = datetime.utcnow()
+        processing_id = timestamp.strftime('%Y%m%d_%H%M%S')
+        
+        train_records = train_df.to_dict('records')
+        for record in train_records:
+            record['split'] = 'train'
+            record['processing_id'] = processing_id
+            record['processed_at'] = timestamp
+        
+        test_records = test_df.to_dict('records')
+        for record in test_records:
+            record['split'] = 'test'
+            record['processing_id'] = processing_id
+            record['processed_at'] = timestamp
+        
+        processed_collection = self.db['processed_data']
+        
+        if train_records:
+            train_result = processed_collection.insert_many(train_records)
+            logger.info(f"Saved {len(train_result.inserted_ids)} train records")
+        
+        if test_records:
+            test_result = processed_collection.insert_many(test_records)
+            logger.info(f"Saved {len(test_result.inserted_ids)} test records")
+        
+        metadata_collection = self.db['processing_metadata']
+        metadata = {
+            'processing_id': processing_id,
+            'timestamp': timestamp,
+            'train_size': len(train_df),
+            'test_size': len(test_df),
+            'total_size': len(train_df) + len(test_df),
+            'train_columns': list(train_df.columns),
+            'test_columns': list(test_df.columns),
+            'config': self.config,
+            'status': 'completed'
+        }
+        metadata_collection.insert_one(metadata)
+        
+        logger.info(f"Processing metadata saved with ID: {processing_id}")
+        
+        return {
+            'processing_id': processing_id,
+            'train_size': len(train_df),
+            'test_size': len(test_df),
+            'collection': 'processed_data'
+        }
+    
+    def run(self):
+        df = self.load_data()
+        
+        df = self.handle_missing_values(df)
+        
+        numerical_cols = self.config['features']['numerical']
+        df = self.handle_outliers(df, numerical_cols)
+        
+        train_df, test_df = self.split_data(df)
+        
+        self.save_processed_data(train_df, test_df)
+        
+        logger.info("Data preparation completed successfully")
+        return train_df, test_df
