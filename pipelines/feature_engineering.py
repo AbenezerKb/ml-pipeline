@@ -115,3 +115,100 @@ class FeatureEngineering(BaseEstimator, TransformerMixin):
         
         return X
     
+    def fit(self, X: pd.DataFrame, y=None):
+        X = pd.DataFrame(X).copy()
+        X = self.create_features(X)
+        if self.apply_selection:
+            X = self.drop_features(X)
+            self.numerical = [col for col in self.numerical if col in X.columns]
+        
+        X = self.scale_numerical(X, is_fit=True)
+        
+        missing_cols = set(self.columns) - set(X.columns)
+        if missing_cols:
+            raise ValueError(f"Missing columns: {missing_cols}")
+        
+        for col, enc in self.encodings.items():
+            col_data = X[col].astype(str)
+            if enc.strategy == "mapping":
+                valid_keys = set(enc.mapping.keys())
+                seen = set(col_data.unique())
+                invalid = seen - valid_keys
+                if invalid:
+                    logger.warning(f"Invalid values in {col}: {list(invalid)[:5]} → mapped to NaN or default")
+                mapping = enc.mapping.copy()
+                if self.unknown_token not in mapping:
+                    mapping[self.unknown_token] = np.nan  # Or configurable default
+                self.encoders[col] = mapping
+            elif enc.strategy == "ordinal":
+                categories = enc.categories[:]
+                if self.unknown_token not in categories:
+                    categories.append(self.unknown_token)
+                oe = OrdinalEncoder(
+                    categories=[categories],
+                    handle_unknown='use_encoded_value',
+                    unknown_value=-1
+                )
+                oe.fit(X[[col]])
+                self.encoders[col] = oe
+            elif enc.strategy == "onehot":
+                categories = enc.categories[:]
+                if self.unknown_token not in categories:
+                    categories.append(self.unknown_token)
+                ohe = OneHotEncoder(
+                    categories=[categories],
+                    handle_unknown='ignore',
+                    sparse_output=False
+                )
+                ohe.fit(X[[col]])
+                self.encoders[col] = ohe
+        
+        self._fitted = True
+        logger.info(f"Fitted on {len(self.columns)} categorical and {len(self.numerical)} numerical columns")
+        return self
+    
+    def transform(self, X: pd.DataFrame) -> pd.DataFrame:
+        if not self._fitted:
+            raise ValueError("Must call fit() first")
+        
+        X = pd.DataFrame(X).copy()
+        X = self.create_features(X)
+        if self.apply_selection:
+            X = self.drop_features(X)
+            self.numerical = [col for col in self.numerical if col in X.columns]
+        
+        X = self.scale_numerical(X, is_fit=False)
+        
+        results = []
+        for col in self.columns:
+            if col not in X.columns:
+                raise ValueError(f"Missing column: {col}")
+            
+            enc = self.encodings[col]
+            col_data = X[col].astype(str)
+            
+            if enc.strategy == "mapping":
+                mapped = col_data.map(self.encoders[col]).fillna(np.nan)
+                results.append(pd.DataFrame(mapped.values, columns=[col], index=X.index))
+            elif enc.strategy == "ordinal":
+                transformed = self.encoders[col].transform(col_data.to_frame())
+                results.append(pd.DataFrame(transformed, columns=[col], index=X.index))
+            elif enc.strategy == "onehot":
+                transformed = self.encoders[col].transform(col_data.to_frame())
+                ohe_cols = [f"{col}_{cat}" for cat in self.encoders[col].categories_[0]]
+                results.append(pd.DataFrame(transformed, columns=ohe_cols, index=X.index))
+        
+        encoded_df = pd.concat(results, axis=1)
+
+        full_df = pd.concat([X[self.numerical], encoded_df], axis=1)
+        return full_df
+    
+    def get_feature_names_out(self) -> List[str]:
+        names = self.numerical.copy()
+        for col in self.columns:
+            enc = self.encodings[col]
+            if enc.strategy in ["mapping", "ordinal"]:
+                names.append(col)
+            elif enc.strategy == "onehot":
+                names.extend([f"{col}_{cat}" for cat in enc.categories])
+        return names
