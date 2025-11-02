@@ -144,6 +144,7 @@ class FeatureEngineering(BaseEstimator, TransformerMixin):
                 categories = enc.categories[:]
                 if self.unknown_token not in categories:
                     categories.append(self.unknown_token)
+                    enc.categories = categories
                 oe = OrdinalEncoder(
                     categories=[categories],
                     handle_unknown='use_encoded_value',
@@ -155,6 +156,7 @@ class FeatureEngineering(BaseEstimator, TransformerMixin):
                 categories = enc.categories[:]
                 if self.unknown_token not in categories:
                     categories.append(self.unknown_token)
+                    enc.categories = categories
                 ohe = OneHotEncoder(
                     categories=[categories],
                     handle_unknown='ignore',
@@ -228,10 +230,12 @@ class FeatureEngineering(BaseEstimator, TransformerMixin):
                 inv_map = {v: k for k, v in self.encoders[col].items() if not pd.isna(v)}
                 result[col] = X[col].map(inv_map).fillna(self.unknown_token)
             elif enc.strategy == "ordinal":
-                result[col] = self.encoders[col].inverse_transform(X[[col]])
+                inv = self.encoders[col].inverse_transform(X[[col]])
+                result[col] = inv.ravel()
             elif enc.strategy == "onehot":
                 ohe_cols = [f"{col}_{cat}" for cat in enc.categories]
-                result[col] = self.encoders[col].inverse_transform(X[ohe_cols])
+                inv = self.encoders[col].inverse_transform(X[ohe_cols])
+                result[col] = inv.ravel()
         
         return result
     

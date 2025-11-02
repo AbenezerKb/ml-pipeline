@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Tuple
 import yaml
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 logging.basicConfig(level=logging.INFO)
@@ -90,7 +90,7 @@ class DataPreparation:
     def save_processed_data(self, train_df: pd.DataFrame, test_df: pd.DataFrame):       
         logger.info("Saving processed data")
         
-        timestamp = datetime.utcnow()
+        timestamp = datetime.now(timezone.utc)
         processing_id = timestamp.strftime('%Y%m%d_%H%M%S')
         
 
