@@ -26,10 +26,8 @@ services:
     
     restart: unless-stopped
 
-
   churn_service:
-    build: .
-    image: churn-model:latest
+    image: ejahdilan/churn-model:v1
 
     environment:
       REGISTRY_URI: ${REGISTRY_URI}
@@ -42,6 +40,19 @@ services:
     networks:
       - mlflow-net
 
+  oauthapp-mflow:
+    image: ejahdilan/oauthapp-mflow:v1
+    container_name: oauthapp-mflow
+    restart: always
+    depends_on:
+      mlflow:
+        condition: service_healthy
+    ports:
+      - "4180:4180"   # Adjust the port if different
+    volumes:
+      - /etc/oauth2-proxy-fastapi.cfg:/etc/oauth2-proxy-fastapi.cfg:ro
+    networks:
+      - mlflow-net
 
 volumes:
   mlflow-db:
@@ -50,3 +61,6 @@ volumes:
 networks:
   mlflow-net:
     driver: bridge
+
+
+
