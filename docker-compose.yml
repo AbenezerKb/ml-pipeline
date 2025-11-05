@@ -28,7 +28,6 @@ services:
 
   churn_service:
     image: ejahdilan/churn-model:v1
-
     env_file:
       - .env
     # environment:
