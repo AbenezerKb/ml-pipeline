@@ -48,9 +48,9 @@ services:
       mlflow:
         condition: service_healthy
     ports:
-      - "4180:4180"   # Adjust the port if different
+      - "4180:4180"
     volumes:
-      - /etc/oauth2-proxy-fastapi.cfg:/etc/oauth2-proxy-fastapi.cfg:ro
+      - /etc/oauth2_proxy.cfg:/etc/oauth2_proxy.cfg:ro
     networks:
       - mlflow-net
 
