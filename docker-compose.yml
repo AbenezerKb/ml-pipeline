@@ -29,9 +29,11 @@ services:
   churn_service:
     image: ejahdilan/churn-model:v1
 
-    environment:
-      REGISTRY_URI: ${REGISTRY_URI}
-      STAGE: ${STAGE:-dev}
+    env_file:
+      - .env
+    # environment:
+    #   REGISTRY_URI: ${REGISTRY_URI}
+    #   STAGE: ${STAGE:-dev}
     depends_on:
       mlflow:
         condition: service_healthy
