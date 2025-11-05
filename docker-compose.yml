@@ -41,7 +41,7 @@ services:
       - mlflow-net
 
   oauthapp-mflow:
-    image: ejahdilan/oauthapp-mflow:v1
+    image: ejahdilan/oauthapp-mlflow:v1
     container_name: oauthapp-mflow
     restart: always
     depends_on:
