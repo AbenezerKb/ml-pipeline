@@ -106,19 +106,21 @@ services:
   mlflow:
     image: ghcr.io/mlflow/mlflow:latest
     hostname: mlflow
-    command: |
-      export AZURE_STORAGE_CONNECTION_STRING=$(cat /run/secrets/azure_storage_connection_string)
-      export AZURE_STORAGE_ACCOUNT_NAME=$(cat /run/secrets/azure_storage_account_name)
-      export HOST_DATA_PATH=$(cat /run/secrets/host_data_path)
-      export MLFLOW_AZURE_STORAGE_USE_CONNECTION_STRING=1
-      mlflow server \
-        --backend-store-uri sqlite:////mlflow_data/mlflow.db \
-        --default-artifact-root wasbs://mlflow/$AZURE_STORAGE_ACCOUNT_NAME.blob.core.windows.net/mlflow \
-        --artifacts-destination azure://$AZURE_STORAGE_ACCOUNT_NAME.blob.core.windows.net/mlflow \
-        --serve-artifacts \
-        --host 0.0.0.0 \
-        --port 5000 \
-        --allowed-hosts '*'
+    command: >
+      sh -c "
+        export AZURE_STORAGE_CONNECTION_STRING=$(cat /run/secrets/azure_storage_connection_string);
+        export AZURE_STORAGE_ACCOUNT_NAME=$(cat /run/secrets/azure_storage_account_name);
+        export HOST_DATA_PATH=$(cat /run/secrets/host_data_path);
+        export MLFLOW_AZURE_STORAGE_USE_CONNECTION_STRING=1;
+        mlflow server \
+          --backend-store-uri sqlite:////mlflow_data/mlflow.db \
+          --default-artifact-root wasbs://mlflow/$AZURE_STORAGE_ACCOUNT_NAME.blob.core.windows.net/mlflow \
+          --artifacts-destination azure://$AZURE_STORAGE_ACCOUNT_NAME.blob.core.windows.net/mlflow \
+          --serve-artifacts \
+          --host 0.0.0.0 \
+          --port 5000 \
+          --allowed-hosts '*'
+      "
     environment:
       AZURE_STORAGE_CONNECTION_STRING: ${AZURE_STORAGE_CONNECTION_STRING}
       MLFLOW_AZURE_STORAGE_USE_CONNECTION_STRING: "1"
@@ -137,7 +139,7 @@ services:
     volumes:
       - ./mlflow_data:/mlflow_data
       - ./mlruns:/mlruns
-
+      
   churn_service:
     image: ejahdilan/churn-model:v1
     env_file:
