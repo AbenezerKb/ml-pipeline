@@ -10,13 +10,12 @@ services:
       MLFLOW_ALLOWED_HOSTS: "*"
     restart: unless-stopped
 
-
   oauthapp-mflow:
     image: ejahdilan/oauthapp-mlflow:v1
     container_name: oauthapp-mflow
     restart: always
     depends_on:
-      mlflow:
+      mlflowapp:
         condition: service_healthy
     ports:
       - "4180:4180"
