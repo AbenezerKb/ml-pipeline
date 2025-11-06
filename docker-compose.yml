@@ -9,6 +9,11 @@ services:
     environment:
       MLFLOW_ALLOWED_HOSTS: "*"
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
 
   oauthapp-mflow:
     image: ejahdilan/oauthapp-mlflow:v1
