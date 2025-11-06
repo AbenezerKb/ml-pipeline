@@ -1,65 +1,203 @@
+# services:
+
+#   mlflow:
+#     image: ghcr.io/mlflow/mlflow:latest
+#     hostname: mlflow       
+#     command:
+#       - sh
+#       - -c
+#       - |
+#         export AZURE_STORAGE_CONNECTION_STRING=$(cat /run/secrets/azure_storage_connection_string)
+#         export AZURE_STORAGE_ACCOUNT_NAME=$(cat /run/secrets/azure_storage_account_name)
+#         export HOST_DATA_PATH=$(cat /run/secrets/host_data_path)
+#         export MLFLOW_AZURE_STORAGE_USE_CONNECTION_STRING=1
+#         mlflow server \
+#           --backend-store-uri sqlite:////mlflow_data/mlflow.db \
+#           --default-artifact-root wasbs://mlflow/$AZURE_STORAGE_ACCOUNT_NAME.blob.core.windows.net/mlflow \
+#           --artifacts-destination azure://$AZURE_STORAGE_ACCOUNT_NAME.blob.core.windows.net/mlflow \
+#           --serve-artifacts \
+#           --host 0.0.0.0 \
+#           --port 5000 \
+#           --allowed-hosts '*'
+#     environment:
+
+#       AZURE_STORAGE_CONNECTION_STRING: ${AZURE_STORAGE_CONNECTION_STRING}
+
+#       MLFLOW_AZURE_STORAGE_USE_CONNECTION_STRING: "1"    
+#     ports:
+#       - "5000:5000"
+    
+#     restart: unless-stopped
+
+#   churn_service:
+#     image: ejahdilan/churn-model:v1
+#     env_file:
+#       - .env
+#     # environment:
+#     #   REGISTRY_URI: ${REGISTRY_URI}
+#     #   STAGE: ${STAGE:-dev}
+#     depends_on:
+#       mlflow:
+#         condition: service_healthy
+#     volumes:
+#       - ./mlruns:/mlruns
+#       - ./mlflow_data:/mlflow_data 
+#     secrets:
+#       - azure_storage_connection_string
+#       - azure_storage_account_name
+#       - host_data_path
+#   model-trainer:
+#     build: .
+#     environment:
+#       - REGISTRY_URI=http://mlflow:5000
+#       - AZURE_STORAGE_CONNECTION_STRING=${AZURE_STORAGE_CONNECTION_STRING}
+#       - AZURE_STORAGE_ACCOUNT_NAME=${AZURE_STORAGE_ACCOUNT_NAME}
+#       - AZURE_STORAGE_ACCOUNT_KEY=${AZURE_STORAGE_ACCOUNT_KEY}
+#       - MLFLOW_AZURE_STORAGE_USE_CONNECTION_STRING="1"
+#       - AZURE_STORAGE_CONTAINER_NAME=mlflow    
+      
+#     depends_on:
+#       - mlflow
+#     volumes:
+#       - .:/app
+
+#   oauthapp-mflow:
+#     image: ejahdilan/oauthapp-mlflow:v1
+#     container_name: oauthapp-mflow
+#     restart: always
+#     depends_on:
+#       mlflow:
+#         condition: service_healthy
+#     ports:
+#       - "4180:4180"
+#     volumes:
+#       - /etc/oauth2_proxy.cfg:/etc/oauth2_proxy.cfg:ro
+#     networks:
+#       - mlflow-net
+
+# volumes:
+#   mlflow-db:
+#   mlflow-artifacts:
+#     secrets:
+#       - azure_storage_connection_string
+#       - azure_storage_account_name
+#       - azure_storage_account_key
+#       - host_data_path
+
+# networks:
+#   mlflow-net:
+#     driver: bridge
+
+
+# # volumes:
+# #   postgres_data:
+
+# secrets:
+#   azure_storage_connection_string:
+#     file: ./secrets/azure_storage_connection_string.txt
+#   azure_storage_account_name:
+#     file: ./secrets/azure_storage_account_name.txt
+#   azure_storage_account_key:
+#     file: ./secrets/azure_storage_account_key.txt
+#   host_data_path:
+#     file: ./secrets/host_data_path.txt
+
 services:
-  
   mlflow:
     image: ghcr.io/mlflow/mlflow:latest
-    hostname: mlflow       
-    command:
-      - sh
-      - -c
-      - |
-        export AZURE_STORAGE_CONNECTION_STRING=$(cat /run/secrets/azure_storage_connection_string)
-        export AZURE_STORAGE_ACCOUNT_NAME=$(cat /run/secrets/azure_storage_account_name)
-        export HOST_DATA_PATH=$(cat /run/secrets/host_data_path)
-        export MLFLOW_AZURE_STORAGE_USE_CONNECTION_STRING=1
-        mlflow server \
-          --backend-store-uri sqlite:////mlflow_data/mlflow.db \
-          --default-artifact-root wasbs://mlflow/$AZURE_STORAGE_ACCOUNT_NAME.blob.core.windows.net/mlflow \
-          --artifacts-destination azure://$AZURE_STORAGE_ACCOUNT_NAME.blob.core.windows.net/mlflow \
-          --serve-artifacts \
-          --host 0.0.0.0 \
-          --port 5000 \
-          --allowed-hosts '*'
+    hostname: mlflow
+    command: |
+      export AZURE_STORAGE_CONNECTION_STRING=$(cat /run/secrets/azure_storage_connection_string)
+      export AZURE_STORAGE_ACCOUNT_NAME=$(cat /run/secrets/azure_storage_account_name)
+      export HOST_DATA_PATH=$(cat /run/secrets/host_data_path)
+      export MLFLOW_AZURE_STORAGE_USE_CONNECTION_STRING=1
+      mlflow server \
+        --backend-store-uri sqlite:////mlflow_data/mlflow.db \
+        --default-artifact-root wasbs://mlflow/$AZURE_STORAGE_ACCOUNT_NAME.blob.core.windows.net/mlflow \
+        --artifacts-destination azure://$AZURE_STORAGE_ACCOUNT_NAME.blob.core.windows.net/mlflow \
+        --serve-artifacts \
+        --host 0.0.0.0 \
+        --port 5000 \
+        --allowed-hosts '*'
     environment:
-
       AZURE_STORAGE_CONNECTION_STRING: ${AZURE_STORAGE_CONNECTION_STRING}
-
-      MLFLOW_AZURE_STORAGE_USE_CONNECTION_STRING: "1"    
+      MLFLOW_AZURE_STORAGE_USE_CONNECTION_STRING: "1"
     ports:
       - "5000:5000"
-    
-    volumes:
-      - ./mlruns:/mlruns
-      - ./mlflow_data:/mlflow_data 
+    restart: unless-stopped
     secrets:
       - azure_storage_connection_string
       - azure_storage_account_name
       - host_data_path
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    volumes:
+      - ./mlflow_data:/mlflow_data
+      - ./mlruns:/mlruns
+
+  churn_service:
+    image: ejahdilan/churn-model:v1
+    env_file:
+      - .env
+    depends_on:
+      mlflow:
+        condition: service_healthy
+    volumes:
+      - ./mlruns:/mlruns
+      - ./mlflow_data:/mlflow_data
+    secrets:
+      - azure_storage_connection_string
+      - azure_storage_account_name
+      - host_data_path
+
   model-trainer:
-    build: .
+    image: ejahdilan/churn-model:v1
     environment:
-      - REGISTRY_URI=http://mlflow:5000
-      - AZURE_STORAGE_CONNECTION_STRING=${AZURE_STORAGE_CONNECTION_STRING}
-      - AZURE_STORAGE_ACCOUNT_NAME=${AZURE_STORAGE_ACCOUNT_NAME}
-      - AZURE_STORAGE_ACCOUNT_KEY=${AZURE_STORAGE_ACCOUNT_KEY}
-      - MLFLOW_AZURE_STORAGE_USE_CONNECTION_STRING="1"
-      - AZURE_STORAGE_CONTAINER_NAME=mlflow    
-      
+      REGISTRY_URI: "http://mlflow:5000"
+      AZURE_STORAGE_CONNECTION_STRING: ${AZURE_STORAGE_CONNECTION_STRING}
+      AZURE_STORAGE_ACCOUNT_NAME: ${AZURE_STORAGE_ACCOUNT_NAME}
+      AZURE_STORAGE_ACCOUNT_KEY: ${AZURE_STORAGE_ACCOUNT_KEY}
+      MLFLOW_AZURE_STORAGE_USE_CONNECTION_STRING: "1"
+      AZURE_STORAGE_CONTAINER_NAME: mlflow
     depends_on:
       - mlflow
     volumes:
       - .:/app
+    secrets:
+      - azure_storage_connection_string
+      - azure_storage_account_name
+      - azure_storage_account_key
 
+
+  oauthapp-mflow:
+    image: ejahdilan/oauthapp-mlflow:v1
+    container_name: oauthapp-mflow
+    restart: always
+    depends_on:
+      mlflow:
+        condition: service_healthy
+    ports:
+      - "4180:4180"
+    volumes:
+      - /etc/oauth2_proxy.cfg:/etc/oauth2_proxy.cfg:ro
+    networks:
+      - mlflow-net
     secrets:
       - azure_storage_connection_string
       - azure_storage_account_name
       - azure_storage_account_key
       - host_data_path
 
+volumes:
+  mlflow-db:
+  mlflow-artifacts:
+
 networks:
   mlflow-net:
     driver: bridge
-volumes:
-  postgres_data:
 
 secrets:
   azure_storage_connection_string:
@@ -70,3 +208,4 @@ secrets:
     file: ./secrets/azure_storage_account_key.txt
   host_data_path:
     file: ./secrets/host_data_path.txt
+
