@@ -277,89 +277,90 @@ class FeatureEngineering(BaseEstimator, TransformerMixin):
         return engineer
     
     ## New method after statiscal test
-    # def identify_features_to_drop(
-    #     self,
-    #     df: pd.DataFrame,
-    #     X_train_preprocess: pd.DataFrame,
-    #     iv_scores_series: pd.Series,
-    #     mutual_info: pd.Series,
-    #     threshold_corr: float = 0.75,
-    #     threshold_iv: float = 1e-4,
-    #     threshold_mi: float = 1e-3,
-    #     nan_features: list = None
-    # ) -> list:
-    #     """
-    #      Identifies features to be removed based on:
-    #         - High correlation
-    #         - Low Information Value (IV)
-    #         - Low Mutual Information (MI)
-    #         - Missing values
-
-    #     """
-
-    #     print("\n IDENTIFYING FEATURES TO CONSIDER FOR REMOVAL...")
-    #     print("=" * 100)
-
-    #     # ---- high correlation ----
-    #     numerical_cols_processed = df.select_dtypes(include=['float64', 'int64']).columns.intersection(
-    #         X_train_preprocess.columns
-    #     )
-    #     corr_matrix = X_train_preprocess[numerical_cols_processed].corr().abs()
-    #     upper = corr_matrix.where(np.triu(np.ones(corr_matrix.shape), k=1).astype(bool))
-
-    #     to_drop_highly_correlated = [
-    #         column for column in upper.columns if any(upper[column] > threshold_corr)
-    #     ]
-
-    #     print(f"   Identified {len(to_drop_highly_correlated)} features to consider for removal due to high multicollinearity (correlation > {threshold_corr}).")
-    #     print("   List of highly correlated features to consider dropping:")
-    #     print(to_drop_highly_correlated)
-    #     print("=" * 100)
-
-    #     # ---- low IV ----
-    #     to_drop_low_iv = iv_scores_series[iv_scores_series < threshold_iv].index.tolist()
-    #     print(f"   Identified {len(to_drop_low_iv)} features to consider for removal due to low IV (IV < {threshold_iv}).")
-    #     print("   List of low IV features to consider dropping:")
-    #     print(to_drop_low_iv)
-    #     print("=" * 100)
-
-    #     # ---- low MI ----
-    #     to_drop_low_mi = mutual_info[mutual_info < threshold_mi].index.tolist()
-    #     print(f"   Identified {len(to_drop_low_mi)} features to consider for removal due to low MI (MI < {threshold_mi}).")
-    #     print("   List of low MI features to consider dropping:")
-    #     print(to_drop_low_mi)
-    #     print("=" * 100)
-
-    #     # ----  Colonnes NaN ----
-    #     if nan_features is None:
-    #         nan_features = ["HandsetPrice"]  # Par défaut
-    #     print(f"   Identified {len(nan_features)} features to consider for removal due to missing values.")
-    #     print("   List of features to consider dropping:")
-    #     print(nan_features)
-    #     print("=" * 100)
-
-    #     # ---- finale fusion ----
-    #     to_drop = list(set(to_drop_highly_correlated + to_drop_low_iv + to_drop_low_mi + nan_features))
-    #     print(f"   Total features to consider dropping: {len(to_drop)}")
-    #     print("=" * 100)
-
-    #     return to_drop
     
-    # def save(self, path: Path):
-    #     path.mkdir(parents=True, exist_ok=True)
-    #     joblib.dump(self, path / "feature_engineer.joblib")
-    #     metadata = {
-    #         "config_hash": self._config_hash,
-    #         "columns": self.columns,
-    #         "numerical": self.numerical,
-    #         "feature_names": self.get_feature_names_out()
-    #     }
-    #     with open(path / "metadata.json", "w") as f:
-    #         json.dump(metadata, f, indent=2)
-    #     logger.info(f"Feature engineer saved to {path}")
+    def identify_features_to_drop(
+        self,
+        df: pd.DataFrame,
+        X_train_preprocess: pd.DataFrame,
+        iv_scores_series: pd.Series,
+        mutual_info: pd.Series,
+        threshold_corr: float = 0.75,
+        threshold_iv: float = 1e-4,
+        threshold_mi: float = 1e-3,
+        nan_features: list = None
+    ) -> list:
+        """
+         Identifies features to be removed based on:
+            - High correlation
+            - Low Information Value (IV)
+            - Low Mutual Information (MI)
+            - Missing values
+
+        """
+
+        print("\n IDENTIFYING FEATURES TO CONSIDER FOR REMOVAL...")
+        print("=" * 100)
+
+        # ---- high correlation ----
+        numerical_cols_processed = df.select_dtypes(include=['float64', 'int64']).columns.intersection(
+            X_train_preprocess.columns
+        )
+        corr_matrix = X_train_preprocess[numerical_cols_processed].corr().abs()
+        upper = corr_matrix.where(np.triu(np.ones(corr_matrix.shape), k=1).astype(bool))
+
+        to_drop_highly_correlated = [
+            column for column in upper.columns if any(upper[column] > threshold_corr)
+        ]
+
+        print(f" Identified {len(to_drop_highly_correlated)} features to consider for removal due to high multicollinearity (correlation > {threshold_corr}).")
+        print(" List of highly correlated features to consider dropping:")
+        print(to_drop_highly_correlated)
+        print("=" * 100)
+
+        # ---- low IV ----
+        to_drop_low_iv = iv_scores_series[iv_scores_series < threshold_iv].index.tolist()
+        print(f" Identified {len(to_drop_low_iv)} features to consider for removal due to low IV (IV < {threshold_iv}).")
+        print(" List of low IV features to consider dropping:")
+        print(to_drop_low_iv)
+        print("=" * 100)
+
+        # ---- low MI ----
+        to_drop_low_mi = mutual_info[mutual_info < threshold_mi].index.tolist()
+        print(f"Identified {len(to_drop_low_mi)} features to consider for removal due to low MI (MI < {threshold_mi}).")
+        print("List of low MI features to consider dropping:")
+        print(to_drop_low_mi)
+        print("=" * 100)
+
+        # ----  Colonnes NaN ----
+        if nan_features is None:
+            nan_features = ["HandsetPrice"]  # Par défaut
+        print(f" Identified {len(nan_features)} features to consider for removal due to missing values.")
+        print(" List of features to consider dropping:")
+        print(nan_features)
+        print("=" * 100)
+
+        # ---- finale fusion ----
+        to_drop = list(set(to_drop_highly_correlated + to_drop_low_iv + to_drop_low_mi + nan_features))
+        print(f"Total features to consider dropping: {len(to_drop)}")
+        print("=" * 100)
+
+        return to_drop
     
-    # @classmethod
-    # def load(cls, path: Path):
-    #     engineer = joblib.load(path / "feature_engineer.joblib")
-    #     logger.info(f"Loaded with {len(engineer.columns)} categorical and {len(engineer.numerical)} numerical columns")
-    #     return engineer
+    def save(self, path: Path):
+        path.mkdir(parents=True, exist_ok=True)
+        joblib.dump(self, path / "feature_engineer.joblib")
+        metadata = {
+            "config_hash": self._config_hash,
+            "columns": self.columns,
+            "numerical": self.numerical,
+            "feature_names": self.get_feature_names_out()
+        }
+        with open(path / "metadata.json", "w") as f:
+            json.dump(metadata, f, indent=2)
+        logger.info(f"Feature engineer saved to {path}")
+    
+    @classmethod
+    def load(cls, path: Path):
+        engineer = joblib.load(path / "feature_engineer.joblib")
+        logger.info(f"Loaded with {len(engineer.columns)} categorical and {len(engineer.numerical)} numerical columns")
+        return engineer

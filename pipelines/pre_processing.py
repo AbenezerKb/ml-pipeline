@@ -7,6 +7,10 @@ from typing import Tuple
 import yaml
 import logging
 from datetime import datetime, timezone
+from sklearn.compose import make_column_transformer, make_column_selector, ColumnTransformer
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import FunctionTransformer, RobustScaler, OrdinalEncoder
+from sklearn.impute import SimpleImputer
 
 
 logging.basicConfig(level=logging.INFO)
@@ -30,7 +34,6 @@ class DataPreparation:
         if secret_path.exists():
             RAW_DATA_SOURCE = secret_path.read_text().strip()
         else:
-
             RAW_DATA_SOURCE = "data/sample.csv"
             
         df = pd.read_csv(RAW_DATA_SOURCE)
@@ -72,7 +75,6 @@ class DataPreparation:
         return df
     
     def split_data(self, df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
-        
         test_size = self.data_config['test_size']
         random_state = self.data_config['random_state']
         
@@ -96,7 +98,6 @@ class DataPreparation:
         timestamp = datetime.now(timezone.utc)
         processing_id = timestamp.strftime('%Y%m%d_%H%M%S')
         
-
         output_dir = os.path.join("data", "processed", processing_id)
         os.makedirs(output_dir, exist_ok=True)
 
@@ -122,3 +123,28 @@ class DataPreparation:
         
         logger.info("Data preparation completed successfully")
         return train_df, test_df
+    
+
+
+##### New Preprocessing functions
+def get_preprocessor() -> ColumnTransformer:
+    preprocessor = make_column_transformer(
+        (make_pipeline(
+            FunctionTransformer(),
+            SimpleImputer(strategy='median'),
+            RobustScaler()
+        ), make_column_selector(dtype_include=['float64', 'int64'])),
+        (make_pipeline(
+            SimpleImputer(strategy='most_frequent'),
+            OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1)
+        ), make_column_selector(dtype_include=['object', 'category'])),
+        verbose_feature_names_out=False
+    )
+    preprocessor.set_output(transform="pandas")
+    return preprocessor
+
+
+def preprocess_data(X: pd.DataFrame) -> pd.DataFrame:
+    preprocessor = get_preprocessor()
+    X_preprocessed = preprocessor.fit_transform(X)
+    return X_preprocessed
