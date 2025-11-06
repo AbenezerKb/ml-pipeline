@@ -154,7 +154,7 @@ services:
       - host_data_path
 
   model-trainer:
-    build: .
+    image: ejahdilan/churn-model:v1
     environment:
       REGISTRY_URI: "http://mlflow:5000"
       AZURE_STORAGE_CONNECTION_STRING: ${AZURE_STORAGE_CONNECTION_STRING}
@@ -170,6 +170,7 @@ services:
       - azure_storage_connection_string
       - azure_storage_account_name
       - azure_storage_account_key
+
 
   oauthapp-mflow:
     image: ejahdilan/oauthapp-mlflow:v1
