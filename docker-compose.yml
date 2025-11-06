@@ -140,20 +140,20 @@ services:
       - ./mlflow_data:/mlflow_data
       - ./mlruns:/mlruns
       
-  churn_service:
-    image: ejahdilan/churn-model:v1
-    env_file:
-      - .env
-    depends_on:
-      mlflow:
-        condition: service_healthy
-    volumes:
-      - ./mlruns:/mlruns
-      - ./mlflow_data:/mlflow_data
-    secrets:
-      - azure_storage_connection_string
-      - azure_storage_account_name
-      - host_data_path
+  # churn_service:
+  #   image: ejahdilan/churn-model:v1
+  #   env_file:
+  #     - .env
+  #   depends_on:
+  #     mlflow:
+  #       condition: service_healthy
+  #   volumes:
+  #     - ./mlruns:/mlruns
+  #     - ./mlflow_data:/mlflow_data
+  #   secrets:
+  #     - azure_storage_connection_string
+  #     - azure_storage_account_name
+  #     - host_data_path
 
   # model-trainer:
   #   image: ejahdilan/churn-model:v1
