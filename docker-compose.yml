@@ -155,23 +155,23 @@ services:
       - azure_storage_account_name
       - host_data_path
 
-  model-trainer:
-    image: ejahdilan/churn-model:v1
-    environment:
-      REGISTRY_URI: "http://mlflow:5000"
-      AZURE_STORAGE_CONNECTION_STRING: ${AZURE_STORAGE_CONNECTION_STRING}
-      AZURE_STORAGE_ACCOUNT_NAME: ${AZURE_STORAGE_ACCOUNT_NAME}
-      AZURE_STORAGE_ACCOUNT_KEY: ${AZURE_STORAGE_ACCOUNT_KEY}
-      MLFLOW_AZURE_STORAGE_USE_CONNECTION_STRING: "1"
-      AZURE_STORAGE_CONTAINER_NAME: mlflow
-    depends_on:
-      - mlflow
-    volumes:
-      - .:/app
-    secrets:
-      - azure_storage_connection_string
-      - azure_storage_account_name
-      - azure_storage_account_key
+  # model-trainer:
+  #   image: ejahdilan/churn-model:v1
+  #   environment:
+  #     REGISTRY_URI: "http://mlflow:5000"
+  #     AZURE_STORAGE_CONNECTION_STRING: ${AZURE_STORAGE_CONNECTION_STRING}
+  #     AZURE_STORAGE_ACCOUNT_NAME: ${AZURE_STORAGE_ACCOUNT_NAME}
+  #     AZURE_STORAGE_ACCOUNT_KEY: ${AZURE_STORAGE_ACCOUNT_KEY}
+  #     MLFLOW_AZURE_STORAGE_USE_CONNECTION_STRING: "1"
+  #     AZURE_STORAGE_CONTAINER_NAME: mlflow
+  #   depends_on:
+  #     - mlflow
+  #   volumes:
+  #     - .:/app
+  #   secrets:
+  #     - azure_storage_connection_string
+  #     - azure_storage_account_name
+  #     - azure_storage_account_key
 
 
   oauthapp-mflow:
