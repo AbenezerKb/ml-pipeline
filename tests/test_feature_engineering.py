@@ -2,10 +2,11 @@ import pytest
 import pandas as pd
 import numpy as np
 import json
+import pytest
 import tempfile
 from pathlib import Path
 from pipelines.feature_engineering import FeatureEngineering
-from pipelines.feature_selection_utils import identify_features_to_drop, identify_and_drop
+from pipelines.feature_engineering import feature_engineering
 @pytest.fixture
 def sample_config():
 
@@ -125,33 +126,125 @@ def test_save_and_load(tmp_path, sample_config, sample_data):
 
 
 ### New code after statical test
-def test_identify_and_drop_basic():
-    np.random.seed(0)
+
+def test_customer_care_features():
+    """Test the creation of customer care features"""
     df = pd.DataFrame({
-        "feature1": np.random.rand(10),
-        "feature2": np.random.rand(10),
-        "feature3": np.random.rand(10),
-        "HandsetPrice": [np.nan if i % 3 == 0 else np.random.rand() for i in range(10)]
+        'CustomerCareCalls': [5, 10, 2],
+        'RetentionCalls': [2, 4, 1]
     })
-    X_train_preprocess = df.copy()
+    
+    result = feature_engineering(df)
+    
 
-    iv_scores_series = pd.Series({
-        "feature1": 0.00005,
-        "feature2": 0.2,
-        "feature3": 0.00001,
-        "HandsetPrice": 0.15
+    assert 'TotalSupportCalls' in result.columns
+    assert 'SupportCallsRatio' in result.columns
+    
+    # check values
+    assert result['TotalSupportCalls'].iloc[0] == 7 
+    assert result['SupportCallsRatio'].iloc[0] == pytest.approx(5/3, rel=1e-5)  # 5 / (2+1)
+
+
+def test_change_patterns_features():
+    """Test the creation of pattern change features"""
+    df = pd.DataFrame({
+        'PercChangeMinutes': [10.5, -5.2, 3.0],
+        'PercChangeRevenues': [8.3, -3.1, 7.0]
     })
-    mutual_info = pd.Series({
-        "feature1": 0.0005,
-        "feature2": 0.002,
-        "feature3": 0.0001,
-        "HandsetPrice": 0.005
+    
+    result = feature_engineering(df)
+    
+    # heck new colonne was created
+    assert 'ChangePattern_Combined' in result.columns
+    assert 'ChangePattern_Volatility' in result.columns
+    
+    # Check new values
+    expected_combined = (10.5 + 8.3) / 2
+    assert result['ChangePattern_Combined'].iloc[0] == pytest.approx(expected_combined, rel=1e-5)
+    
+    expected_volatility = abs(10.5 - 8.3)
+    assert result['ChangePattern_Volatility'].iloc[0] == pytest.approx(expected_volatility, rel=1e-5)
+
+
+def test_call_behavior_features():
+    """Test the creation of call behavior features"""
+    df = pd.DataFrame({
+        'InboundCalls': [10, 20, 5],
+        'OutboundCalls': [5, 10, 2],
+        'UnansweredCalls': [2, 3, 1]
     })
+    
+    result = feature_engineering(df)
+    
+    #check new columns were created
+    assert 'TotalCalls' in result.columns
+    assert 'CallDirection_Ratio' in result.columns
+    assert 'UnansweredRate' in result.columns
+    
+    # check new values
+    assert result['TotalCalls'].iloc[0] == 15  
+    assert result['CallDirection_Ratio'].iloc[0] == pytest.approx(10/6, rel=1e-5)  
+    assert result['UnansweredRate'].iloc[0] == pytest.approx(2/16, rel=1e-5)  
 
-    to_drop = identify_features_to_drop(df, X_train_preprocess, iv_scores_series, mutual_info)
-    assert isinstance(to_drop, list)
-    assert "HandsetPrice" in to_drop
 
-    df_after, dropped = identify_and_drop(df, X_train_preprocess, iv_scores_series, mutual_info, inplace=False)
-    assert "HandsetPrice" not in df_after.columns
-    assert set(dropped).issubset(set(["feature1", "feature3", "HandsetPrice", "feature2"]))
+def test_retention_features():
+    """Test the creation of retention features"""
+    df = pd.DataFrame({
+        'RetentionOffersAccepted': [2, 1, 0],
+        'RetentionCalls': [5, 3, 2]
+    })
+    
+    result = feature_engineering(df)
+    
+    #check new column was created
+    assert 'RetentionAcceptanceRate' in result.columns
+    
+   #check new values
+    assert result['RetentionAcceptanceRate'].iloc[0] == pytest.approx(2/6, rel=1e-5)  # 2 / (5+1)
+
+
+def test_service_quality_features():
+    """Test the creation of service quality features"""
+    df = pd.DataFrame({
+        'DroppedBlockedCalls': [2, 5, 1],
+        'InboundCalls': [10, 20, 5],
+        'OutboundCalls': [5, 10, 2]
+    })
+    
+    # First, compute TotalCalls
+    result = feature_engineering(df)
+    
+    
+    assert 'ServiceQualityScore' in result.columns
+    
+    # check new values (1 - (DroppedBlockedCalls / (TotalCalls + 1)))
+    total_calls_0 = 10 + 5  
+    expected_score_0 = 1 - (2 / (total_calls_0 + 1))
+    assert result['ServiceQualityScore'].iloc[0] == pytest.approx(expected_score_0, rel=1e-5)
+
+
+def test_copy_parameter():
+    """Test que le paramètre copy fonctionne correctement"""
+    df = pd.DataFrame({
+        'CustomerCareCalls': [5, 10, 2],
+        'RetentionCalls': [2, 4, 1]
+    })
+    
+    # Test with copy=True (by défault)
+    result = feature_engineering(df, copy=True)
+    assert id(df) != id(result), "Un nouveau DataFrame devrait être créé"
+    assert 'TotalSupportCalls' not in df.columns, "Le DataFrame original ne devrait pas être modifié"
+
+
+def test_missing_columns():
+    """Test quand certaines colonnes sont manquantes"""
+    df = pd.DataFrame({
+        'CustomerCareCalls': [5, 10, 2]
+        # RetentionCalls missing
+    })
+    
+    result = feature_engineering(df)
+    
+   
+    assert 'TotalSupportCalls' not in result.columns
+    assert 'SupportCallsRatio' not in result.columns

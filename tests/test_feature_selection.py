@@ -53,7 +53,7 @@ def test_feature_selection_no_columns_to_drop():
     
     result = feature_selection(df)
     
-    # Toutes les colonnes doivent rester
+   
     assert len(result.columns) == len(df.columns)
 
 
