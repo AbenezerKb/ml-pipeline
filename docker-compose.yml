@@ -19,9 +19,6 @@ services:
     image: ejahdilan/oauthapp-mlflow:v1
     container_name: oauthapp-mflow
     restart: always
-    depends_on:
-      mlflowapp:
-        condition: service_healthy
     ports:
       - "4180:4180"
     volumes:
