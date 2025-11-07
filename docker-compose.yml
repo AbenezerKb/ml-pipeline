@@ -1,0 +1,120 @@
+services:
+  
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:latest
+    hostname: mlflow       
+    command:
+      - sh
+      - -c
+      - |
+        export AZURE_STORAGE_CONNECTION_STRING=DefaultEndpointsProtocol=https;AccountName=mlchurndatastore;AccountKey=KgeG0e0Ovgxr/28OVE2YAa7NZiFS6sXhcybAP7Nc8nlmY4yK0R8WN2oU4bTKyFB8UZiYKkqN2drf+AStBnpVYw==;EndpointSuffix=core.windows.net
+        export AZURE_STORAGE_ACCOUNT_NAME=mlchurndatastore
+        export AZURE_STORAGE_ACCOUNT_KEY=KgeG0e0Ovgxr/28OVE2YAa7NZiFS6sXhcybAP7Nc8nlmY4yK0R8WN2oU4bTKyFB8UZiYKkqN2drf+AStBnpVYw==
+        export MLFLOW_AZURE_STORAGE_USE_CONNECTION_STRING=1
+      
+        
+        mlflow server \
+          --backend-store-uri sqlite:////mlflow_data/mlflow.db \
+          --default-artifact-root "wasbs://mlflow@mlchurndatastore.blob.core.windows.net" \
+          --artifacts-destination "wasbs://mlflow@mlchurndatastore.blob.core.windows.net" \
+          --serve-artifacts \
+          --host 0.0.0.0 \
+          --port 5000 \
+          --allowed-hosts '*'
+    environment:
+      AZURE_STORAGE_CONNECTION_STRING: ${AZURE_STORAGE_CONNECTION_STRING}
+      AZURE_STORAGE_ACCOUNT_NAME: ${AZURE_STORAGE_ACCOUNT_NAME}
+      AZURE_STORAGE_ACCOUNT_KEY: ${AZURE_STORAGE_ACCOUNT_KEY}
+      MLFLOW_AZURE_STORAGE_USE_CONNECTION_STRING: "1"    
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./mlruns:/mlruns
+      - ./mlflow_data:/mlflow_data 
+    secrets:
+      - azure_storage_connection_string
+      - azure_storage_account_name
+      - azure_storage_account_key
+      - host_data_path
+    networks:
+      - mlflow-net
+   
+      
+  model-trainer:
+    build: .
+    environment:
+      - REGISTRY_URI=http://mlflow:5000
+      - AZURE_STORAGE_CONNECTION_STRING=/run/secrets/azure_storage_connection_string 
+      - AZURE_STORAGE_ACCOUNT_NAME=/run/secrets/azure_storage_account_name
+      - AZURE_STORAGE_ACCOUNT_KEY=/run/secrets/azure_storage_account_key
+      - MLFLOW_AZURE_STORAGE_USE_CONNECTION_STRING=1
+      - AZURE_STORAGE_CONTAINER_NAME=/run/secrets/azure_storage_container_name
+
+      
+      - AZURE_STORAGE_ACCOUNT=${AZURE_STORAGE_ACCOUNT_NAME}
+      - AZURE_STORAGE_KEY=${AZURE_STORAGE_ACCOUNT_KEY}
+      - AZURE_CONTAINER_NAME=${AZURE_STORAGE_CONTAINER_NAME}
+      - AZURE_DVC_CONTAINER=${AZURE_DVC_CONTAINER:-dvc-storage}
+      
+      
+      - GIT_REPO_URL=/run/secrets/git_repo_url
+      - GIT_USER_EMAIL=/run/secrets/git_user_email 
+      - GIT_USER_NAME=/run/secrets/git_user_name
+      - GIT_REMOTE=/run/secrets/git_remote
+      - GIT_BRANCH=/run/secrets/git_branch
+      
+    volumes:
+      
+      - ./data:/app/data
+      - ./.dvc:/app/.dvc
+  
+          
+    networks:
+      - pipeline-network  
+      - mlflow-net
+    depends_on:
+      - mlflow
+        
+    secrets:
+      - azure_storage_connection_string
+      - azure_storage_account_name
+      - azure_storage_account_key
+      - azure_dvc_container
+      - host_data_path   
+      - git_user_name
+      - git_user_email
+      - git_repo_url      
+      - git_branch
+      - git_remote
+
+networks:
+  mlflow-net:
+    driver: bridge
+  pipeline-network:
+    driver: bridge  
+
+volumes:
+  mlflow_data:
+  mlruns:
+
+secrets:
+  azure_storage_connection_string:
+    file: ./secrets/azure_storage_connection_string.txt
+  azure_storage_account_name:
+    file: ./secrets/azure_storage_account_name.txt
+  azure_storage_account_key:
+    file: ./secrets/azure_storage_account_key.txt
+  host_data_path:
+    file: ./secrets/host_data_path.txt
+  git_branch:
+    file: ./secrets/git_branch.txt
+  git_repo_url:
+    file: ./secrets/git_repo_url.txt
+  git_user_name:
+    file: ./secrets/git_user_name.txt
+  git_user_email:
+    file: ./secrets/git_user_email.txt
+  git_remote:
+    file: ./secrets/git_remote.txt
+  azure_dvc_container:  
+    file: ./secrets/azure_dvc_container.txt
