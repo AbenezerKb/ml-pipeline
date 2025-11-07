@@ -9,8 +9,13 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import yaml
 import logging
+import sys
+from pathlib import Path
 
-from .feature_engineering import FeatureEngineering
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+
+from pipelines.feature_engineering import FeatureEngineering
 
 logger = logging.getLogger(__name__)
 
@@ -66,17 +71,16 @@ class ModelEvaluation:
     def plot_confusion_matrix(self, y_true, y_pred):
 
         cm = confusion_matrix(y_true, y_pred)
-        
-        plt.figure(figsize=(8, 6))
-        sns.heatmap(cm, annot=True, fmt='d', cmap='Blues')
-        plt.title('Confusion Matrix')
-        plt.ylabel('True Label')
-        plt.xlabel('Predicted Label')
+        plt.figure(figsize=(7, 5))
+        sns.heatmap(cm, annot=True, fmt='d', cmap='YlOrRd', cbar=True,
+                    xticklabels=['No Churn', 'Churn'],
+                    yticklabels=['No Churn', 'Churn'])
+        plt.title(f'Confusion Matrix - ', fontsize=14, fontweight='bold')
+        plt.ylabel('True Class', fontsize=12)
+        plt.xlabel('Predicted Class', fontsize=12)
         plt.tight_layout()
-        
-        plt.savefig('confusion_matrix.png')
-        mlflow.log_artifact('confusion_matrix.png')
-        plt.close()
+        plt.show()
+ 
     
     def plot_feature_importance(self, model, feature_names):
 

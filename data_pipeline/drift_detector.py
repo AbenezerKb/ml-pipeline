@@ -166,11 +166,7 @@ class DriftDetector:
         try:
 
             logger.info(f"Loading current data from: {current_data_path}")
-            print("current_data_path")
-            print(current_data_path)
-            print(current_data_path)
-            print(current_data_path)
-            print("end_data_path")
+           
             current_df = self._load_data(current_data_path)
             
             ref_path = reference_data_path or self.reference_data_path
