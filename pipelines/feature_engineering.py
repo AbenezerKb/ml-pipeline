@@ -275,3 +275,46 @@ class FeatureEngineering(BaseEstimator, TransformerMixin):
         engineer = joblib.load(path / "feature_engineer.joblib")
         logger.info(f"Loaded with {len(engineer.columns)} categorical and {len(engineer.numerical)} numerical columns")
         return engineer
+    
+### New method after statiscal test
+    
+def feature_engineering(df: pd.DataFrame, copy: bool = True) -> pd.DataFrame:
+    """
+    Crée de nouvelles features à partir des colonnes existantes.
+    
+    Args:
+        df: DataFrame avec les données
+        copy: Si True, créer une copie du DataFrame
+        
+    Returns:
+        DataFrame avec les nouvelles features
+    """
+    if copy:
+        df = df.copy()
+
+    # Customer care interactions
+    if 'CustomerCareCalls' in df.columns and 'RetentionCalls' in df.columns:
+        df['TotalSupportCalls'] = df['CustomerCareCalls'] + df['RetentionCalls']
+        df['SupportCallsRatio'] = df['CustomerCareCalls'] / (df['RetentionCalls'] + 1)
+
+    # Change patterns
+    if 'PercChangeMinutes' in df.columns and 'PercChangeRevenues' in df.columns:
+        df['ChangePattern_Combined'] = (df['PercChangeMinutes'] + df['PercChangeRevenues']) / 2
+        df['ChangePattern_Volatility'] = np.abs(df['PercChangeMinutes'] - df['PercChangeRevenues'])
+
+    # Call behavior patterns
+    if 'InboundCalls' in df.columns and 'OutboundCalls' in df.columns:
+        df['TotalCalls'] = df['InboundCalls'] + df['OutboundCalls']
+        df['CallDirection_Ratio'] = df['InboundCalls'] / (df['OutboundCalls'] + 1)
+    if 'UnansweredCalls' in df.columns and 'TotalCalls' in df.columns:
+        df['UnansweredRate'] = df['UnansweredCalls'] / (df['TotalCalls'] + 1)
+
+    # Loyalty indicators
+    if 'RetentionOffersAccepted' in df.columns and 'RetentionCalls' in df.columns:
+        df['RetentionAcceptanceRate'] = df['RetentionOffersAccepted'] / (df['RetentionCalls'] + 1)
+
+    # Service quality indicators
+    if 'DroppedBlockedCalls' in df.columns and 'TotalCalls' in df.columns:
+        df['ServiceQualityScore'] = 1 - (df['DroppedBlockedCalls'] / (df['TotalCalls'] + 1))
+
+    return df 

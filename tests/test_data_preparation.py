@@ -5,9 +5,10 @@ from pathlib import Path
 from unittest.mock import patch, MagicMock
 import yaml
 import logging
-from datetime import datetime, timezone
-from pipelines.pre_processing import DataPreparation
 import os
+from datetime import datetime, timezone
+from pipelines.pre_processing import DataPreparation,preprocess_data, get_preprocessor
+
 
 
 SAMPLE_CONFIG = """
@@ -105,3 +106,42 @@ def test_run(mock_load_data, mock_handle_missing_values, mock_handle_outliers, m
     mock_handle_outliers.assert_called_once_with(SAMPLE_DF, ['num1', 'num2'])
     mock_split_data.assert_called_once()
     mock_save_processed_data.assert_called_once()
+
+
+### New test for new preprocessing
+
+# Sample data similar to X_train
+SAMPLE_DF_PREPROCESS = pd.DataFrame({
+    "Age": [25, 40, np.nan],
+    "Income": [40000, 80000, 60000],
+    "Gender": ["Male", "Female", "Female"],
+    "City": ["London", "Paris", None]
+})
+
+@pytest.fixture
+def sample_data_preprocess():
+    return SAMPLE_DF_PREPROCESS.copy()
+
+def test_get_preprocessor_returns_column_transformer(sample_data_preprocess):
+    preprocessor = get_preprocessor()
+    assert hasattr(preprocessor, "fit_transform")  # Vérifie que c'est bien un transformer
+
+    X_transformed = preprocessor.fit_transform(sample_data_preprocess)
+    assert isinstance(X_transformed, pd.DataFrame)
+    assert X_transformed.shape[0] == sample_data_preprocess.shape[0]
+
+def test_preprocess_data_function(sample_data_preprocess):
+    X_processed = preprocess_data(sample_data_preprocess)
+    assert isinstance(X_processed, pd.DataFrame)
+    assert X_processed.shape[0] == sample_data_preprocess.shape[0]
+
+    # Vérifie qu'il n'y a plus de NaN sur les colonnes numériques
+    numeric_cols = sample_data_preprocess.select_dtypes(include=['float64', 'int64']).columns
+    assert not X_processed[numeric_cols].isna().any().any()
+
+def test_ordinal_encoding_behavior(sample_data_preprocess):
+    X_processed = preprocess_data(sample_data_preprocess)
+    # Les colonnes catégorielles doivent être encodées en nombres
+    assert np.issubdtype(X_processed["Gender"].dtype, np.number)
+    # Vérifie que le None de "City" a été transformé en -1 par l'OrdinalEncoder
+    assert -1 in X_processed["City"].values

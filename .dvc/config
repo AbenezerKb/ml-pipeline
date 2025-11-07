@@ -1,5 +1,0 @@
-[core]
-    remote = azure_remote
-['remote "azure_remote"']
-    url = azure://telcustomerchurndata/data
-    account_name = mlchurndatastore
