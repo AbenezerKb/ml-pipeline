@@ -1,0 +1,131 @@
+import pandas as pd
+import numpy as np
+from sklearn.metrics import (
+    accuracy_score, precision_score, recall_score, f1_score,
+    roc_auc_score, confusion_matrix, classification_report
+)
+import mlflow
+import matplotlib.pyplot as plt
+import seaborn as sns
+import yaml
+import logging
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+
+from pipelines.feature_engineering import FeatureEngineering
+
+logger = logging.getLogger(__name__)
+
+
+class ModelEvaluation:
+    
+    def __init__(self, config_path: str):
+        with open(config_path, 'r') as f:
+            self.config = yaml.safe_load(f)
+        
+        self.thresholds = self.config.get('performance_thresholds', {})
+    
+    def evaluate(self, model, X_test: pd.DataFrame, y_test: pd.Series) -> dict:
+     
+        logger.info(f"Engineered test shape: {X_test.shape}")
+
+        logger.info(f"Feature names: {list(X_test.columns)}")
+
+        y_pred = model.predict(X_test)
+        y_pred_proba = model.predict_proba(X_test)[:, 1] if hasattr(model, 'predict_proba') else None
+        unique_labels = y_test.unique()
+        if not set(unique_labels).issubset({0, 1}):
+            logger.warning(f"Expected y_train to be encoded as 0/1, got: {unique_labels}")
+            y_clean = y_test.astype(str).str.strip().str.capitalize()
+            y_encoded = y_clean.map({'No': 0, 'Yes': 1})
+            if y_encoded.isna().any():
+                raise ValueError(f"Invalid labels: {y_clean[y_encoded.isna()].unique()}")
+            y_encoded = y_encoded.astype(int)
+        else:
+            y_encoded = y_test.astype(int)
+
+        metrics = {
+            'accuracy': accuracy_score(y_encoded, y_pred),
+            'precision': precision_score(y_encoded, y_pred, average='weighted'),
+            'recall': recall_score(y_encoded, y_pred, average='weighted'),
+            'f1_score': f1_score(y_encoded, y_pred, average='weighted'),
+        }
+
+        if y_pred_proba is not None:
+            metrics['roc_auc'] = roc_auc_score(y_encoded, y_pred_proba)
+
+        for metric_name, metric_value in metrics.items():
+            mlflow.log_metric(metric_name, metric_value)
+            logger.info(f"{metric_name}: {metric_value:.4f}")
+
+        report = classification_report(y_encoded, y_pred)
+        logger.info(f"\nClassification Report:\n{report}")
+
+        with open("classification_report.txt", "w") as f:
+            f.write(report)
+        mlflow.log_artifact("classification_report.txt")
+
+        self.plot_confusion_matrix(y_encoded, y_pred)
+
+        if hasattr(model, 'feature_importances_'):
+            self.plot_feature_importance(model, X_test.columns)
+
+        mlflow.log_param("num_features_engineered", len(X_test.columns))
+
+        return metrics
+    
+    def plot_confusion_matrix(self, y_true, y_pred):
+
+        cm = confusion_matrix(y_true, y_pred)
+        plt.figure(figsize=(7, 5))
+        sns.heatmap(cm, annot=True, fmt='d', cmap='YlOrRd', cbar=True,
+                    xticklabels=['No Churn', 'Churn'],
+                    yticklabels=['No Churn', 'Churn'])
+        plt.title(f'Confusion Matrix - ', fontsize=14, fontweight='bold')
+        plt.ylabel('True Class', fontsize=12)
+        plt.xlabel('Predicted Class', fontsize=12)
+        plt.tight_layout()
+        plt.show()
+ 
+    
+    def plot_feature_importance(self, model, feature_names):
+
+        importances = model.feature_importances_
+        indices = np.argsort(importances)[::-1][:20] 
+        
+        plt.figure(figsize=(10, 8))
+        plt.title("Top 20 Feature Importances")
+        plt.barh(range(len(indices)), importances[indices])
+        plt.yticks(range(len(indices)), [feature_names[i] for i in indices])
+        plt.xlabel("Importance")
+        plt.tight_layout()
+        
+        plt.savefig('feature_importance.png')
+        mlflow.log_artifact('feature_importance.png')
+        plt.close()
+    
+    def check_thresholds(self, metrics: dict) -> bool:
+        
+        logger.info("Checking performance thresholds...")
+        
+        meets_thresholds = True
+        for metric_name, threshold in self.thresholds.items():
+            metric_key = f"min_{metric_name}"
+            if metric_key in self.thresholds:
+                actual_value = metrics.get(metric_name, 0)
+                threshold_value = self.thresholds[metric_key]
+                
+                if actual_value < threshold_value:
+                    logger.warning(
+                        f"{metric_name} ({actual_value:.4f}) is below threshold ({threshold_value:.4f})"
+                    )
+                    meets_thresholds = False
+                else:
+                    logger.info(
+                        f"{metric_name} ({actual_value:.4f}) meets threshold ({threshold_value:.4f})"
+                    )
+        
+        return meets_thresholds
