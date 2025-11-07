@@ -103,6 +103,34 @@
 #     file: ./secrets/host_data_path.txt
 
 services:
+<<<<<<< HEAD
+  mlflowapp:
+    image: ejahdilan/mlflowapp:v8
+    ports:
+      - "5000:5000"
+    volumes:
+      - /Users/ammi/mlflow_data:/mlflow_data
+      - /Users/ammi/mlruns:/mlruns
+    environment:
+      MLFLOW_ALLOWED_HOSTS: "*"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  oauthapp-mflow:
+    image: ejahdilan/oauthapp-mlflow:v1
+    container_name: oauthapp-mflow
+    restart: always
+    ports:
+      - "4180:4180"
+    volumes:
+      - /etc/oauth2_proxy.cfg:/etc/oauth2_proxy.cfg:ro
+
+
+=======
   mlflow:
     image: ghcr.io/mlflow/mlflow:latest
     hostname: mlflow
@@ -209,3 +237,4 @@ secrets:
   host_data_path:
     file: ./secrets/host_data_path.txt
 
+>>>>>>> main
