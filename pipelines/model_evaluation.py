@@ -117,5 +117,69 @@ class ModelEvaluation:
         
         return meets_thresholds
     
+# ============================================================
+# # new code for evaluation 
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.metrics import (
+    accuracy_score,
+    precision_score,
+    recall_score,
+    f1_score,
+    roc_auc_score,
+    confusion_matrix
+)
 
+
+def evaluate_model(name, y_true, y_pred, y_prob):
+
+    """
+        Comprehensive evaluation of a model.
+        
+        Args:
+            name: Model name
+            y_true: True labels
+            y_pred: Model predictions
+            y_prob: Predicted probabilities
+            
+        Returns:
+            Dictionary with metrics
+    """
     
+    print(f"RESULTS: {name}")
+
+    print(f"Accuracy:  {accuracy_score(y_true, y_pred):.4f}")
+    print(f"Precision: {precision_score(y_true, y_pred):.4f}")
+    print(f"Recall:    {recall_score(y_true, y_pred):.4f}")
+    print(f"F1-Score:  {f1_score(y_true, y_pred):.4f}")
+    print(f"ROC-AUC:   {roc_auc_score(y_true, y_prob):.4f}")
+
+    return {
+        'Model': name,
+        'Accuracy': accuracy_score(y_true, y_pred),
+        'Precision': precision_score(y_true, y_pred),
+        'Recall': recall_score(y_true, y_pred),
+        'F1': f1_score(y_true, y_pred),
+        'AUC': roc_auc_score(y_true, y_prob)
+    }
+
+
+def plot_confusion_matrix(y_true, y_pred, model_name):
+    """
+        Displays an enhanced confusion matrix.
+
+        Args:
+            y_true: True labels
+            y_pred: Model predictions
+            model_name: Model name for the title
+    """
+    cm = confusion_matrix(y_true, y_pred)
+    plt.figure(figsize=(7, 5))
+    sns.heatmap(cm, annot=True, fmt='d', cmap='YlOrRd', cbar=True,
+                xticklabels=['No Churn', 'Churn'],
+                yticklabels=['No Churn', 'Churn'])
+    plt.title(f'Confusion Matrix - {model_name}', fontsize=14, fontweight='bold')
+    plt.ylabel('True Class', fontsize=12)
+    plt.xlabel('Predicted Class', fontsize=12)
+    plt.tight_layout()
+    plt.show()
