@@ -114,6 +114,7 @@ class DataPreparation:
         df = self.handle_missing_values(df)
         
         numerical_cols = self.config['features']['numerical']
+       
         df = self.handle_outliers(df, numerical_cols)
         
         train_df, test_df = self.split_data(df)

@@ -8,6 +8,8 @@ from sklearn.model_selection import cross_val_score
 import mlflow
 import mlflow.sklearn
 from mlflow.models.signature import infer_signature
+from pipelines.feature_engineering import FeatureEngineering
+from sklearn.pipeline import Pipeline
 
 import yaml
 import logging
@@ -25,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 class ModelTraining:
     
-    def __init__(self, config_path: str):
+    def __init__(self, config_path: str, feature_engineer=None):
         
         with open(config_path, 'r') as f:
             self.config = yaml.safe_load(f)
@@ -33,6 +35,7 @@ class ModelTraining:
         self.training_config = self.config['training']
         self.model_params = self.config['model_params']
         self.mlflow_config = self.config['mlflow']
+        self.feature_engineer = feature_engineer
         mlflow.set_experiment(
             experiment_name= self.mlflow_config['experiment_name']
         )
@@ -58,7 +61,7 @@ class ModelTraining:
         if model_type == 'random_forest':
             return RandomForestClassifier(**self.model_params['random_forest'])
         elif model_type == 'xgboost':
-            return XGBClassifier(**self.model_params['xgboost'])       
+            return XGBClassifier(**self.model_params['xgboost'])              
         else:
             raise ValueError(f"Unknown model type: {model_type}")
     
@@ -93,17 +96,7 @@ class ModelTraining:
             
         except Exception as e:
             logger.error(f"Error uploading to Azure Blob: {str(e)}")
-            raise
-   
-    def sanitize_columns(self, columns):
-        return (
-            columns.str.strip()
-            .str.lower()
-            .str.replace(r'[^\w]+', '_', regex=True) 
-            .str.replace(r'_+', '_', regex=True)
-            .str.strip('_')
-            .str.replace('unk', '__UNK__', case=False) 
-        )
+            raise       
 
     def train(self, X_train: pd.DataFrame, y_train: pd.Series):     
         best_model = None
@@ -134,8 +127,8 @@ class ModelTraining:
                     y_encoded = y_train.astype(int)
 
                 X_train_transformed = X_train.copy()
-                X_train.columns = self.sanitize_columns(X_train.columns)
-                logger.info(f"Using {X_train_transformed.shape[1]} sanitized features")
+               
+                
                 model.fit(X_train, y_encoded)
 
                 cv_scores = cross_val_score(
@@ -160,15 +153,21 @@ class ModelTraining:
                 probabilities = model.predict_proba(X_train)[:, 1]
 
                 signature = infer_signature(X_train, predictions)
+                from sklearn.pipeline import Pipeline
+                
+                model_to_save = Pipeline([
+                    ('preprocessor', self.feature_engineer),
+                    (model_type, model)])
+
                 mlflow.sklearn.log_model(
-                    sk_model=model,
+                    sk_model=model_to_save,
                     artifact_path=f"model_{model_type}",
                     signature=signature,
                 )
 
                 if mean_score > self.best_score:
                     self.best_score = mean_score
-                    best_model = model
+                    best_model = model_to_save
                     best_model_type = model_type
 
                 logger.info(f"Current best model: {best_model_type} with score {self.best_score:.4f}")
@@ -181,7 +180,7 @@ class ModelTraining:
                 mlflow.log_param("best_model_type", best_model_type)
                 mlflow.log_metric("best_cv_score", self.best_score)
 
-                predictions = best_model.predict(X_train)
+                predictions = model.predict(X_train)
                 signature = infer_signature(X_train, predictions)
 
                 mlflow.sklearn.log_model(

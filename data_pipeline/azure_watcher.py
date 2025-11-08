@@ -28,7 +28,7 @@ class AzureBlobWatcher:
         
         self.state_file = Path('.azure_watcher_state.json')
         self.processed_blobs = self._load_state()
-        
+       
         self._init_client()
     
     def _init_client(self):
@@ -116,7 +116,7 @@ class AzureBlobWatcher:
 
             if new_blobs:
                 self._save_state()
-            print(f"non {new_blobs}")
+            
             return new_blobs
             
         except AzureError as e:
@@ -181,7 +181,7 @@ class AzureBlobWatcher:
                 blob_client.upload_blob(f, overwrite=True, timeout=300)
     
             logger.info("Successfully uploaded: %s", blob_name)
-            print(f"Upload completed: {blob_name}")
+            
             return blob_name
     
         except AzureError as e:

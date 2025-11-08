@@ -225,18 +225,19 @@ class DVCManager:
             dvc_result = self._run_command(['dvc', 'add', file_path])
             logger.info(f"DVC add output: {dvc_result.stdout}")
             result['dvc_file'] = dvc_file
-           
+                       
             push_result = self._run_command(['dvc', 'push', f"{file_path}.dvc"], check=False)
             if push_result.returncode != 0:
                 logger.warning(f"DVC push warning: {push_result.stderr.strip()}")
           
             self._run_command(['git', 'add', dvc_file])
             self._run_command(['git', 'add', '.gitignore'])
-           
             status_result = self._run_command(['git', 'status', '--porcelain'], check=False)
             changes = status_result.stdout.strip()
             commit_msg = f"Update data: {file_path_obj.name} ({file_hash[:8]})"
+            
             if changes:
+                
                 commit_result = self._run_command(['git', 'commit', '-m', commit_msg], check=False)
                 if commit_result.returncode != 0:
                     err = commit_result.stderr.strip()
