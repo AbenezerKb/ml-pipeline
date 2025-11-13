@@ -1,3 +1,17 @@
+def load_secrets_from_folder(secrets_dir: str = "/run/secrets/"):    
+    from pathlib import Path
+    import os
+    secrets_path = Path(secrets_dir)
+    if not secrets_path.exists():
+        return
+    for secret_file in secrets_path.glob("*"):
+        var_name = secret_file.stem.upper()
+        with open(secret_file, "r") as f:
+            value = f.read().strip()
+        os.environ[var_name] = value
+
+load_secrets_from_folder()
+
 import os
 import sys
 import logging
@@ -52,8 +66,7 @@ class DataPipeline:
         for key in required_keys:
             if key not in self.config:
                 raise ValueError(f"Missing required configuration section: {key}")
-        
-        
+                   
         if not all([
             os.getenv('AZURE_STORAGE_ACCOUNT'),
             os.getenv('AZURE_STORAGE_KEY'),
@@ -116,7 +129,6 @@ class DataPipeline:
                 else:
                     raise Exception(f"DVC versioning failed: {error}")
             
-           
             await self.blob_watcher.download_reference()            
            
             new_ingested_data = pd.read_csv(local_path)
@@ -125,26 +137,15 @@ class DataPipeline:
             azure_blob_watcher = AzureBlobWatcher(self.config['azure'])
             combined.to_csv("data/reference/combined.csv", index=False)            
             
-            await azure_blob_watcher.upload_file("data/reference/combined.csv", "data/combined_2.csv")
-
             if self.config['drift_detection']['enabled']:
                 logger.info(f"[{pipeline_id}] Step 3: Performing drift detection")
-                drift_result = await self.drift_detector.detect_drift(
-                    local_path,
-                    "ref_data.csv",                   
-                )
-               
-                results['steps']['drift_detection'] = drift_result
+                if await self.drift_detector.detect_drift(
+                    new_ingested_data,
+                    reference_data,
+                ):               
 
-                if drift_result['drift_detected'] and self.config['drift_detection']['trigger_on_drift']:
-                    logger.warning(f"[{pipeline_id}] Drift detected! Triggering model training")
-                       
                     train("configs/train_config.yml")
-                    
-                else:
-                    logger.info(f"[{pipeline_id}] No significant drift detected. Skipping model training.")
-                    results['steps']['model_training'] = {'status': 'skipped', 'reason': 'no_drift'}                    
-            
+                
             logger.info(f"[{pipeline_id}] Pipeline completed successfully")
             
         except Exception as e:
@@ -172,15 +173,15 @@ class DataPipeline:
         while True:
             try:
                 new_blobs = await self.blob_watcher.check_new_blobs()
-                print(f"checking {new_blobs}")
+                
                 if new_blobs:
                     logger.info(f"Found {len(new_blobs)} new blob(s)")
-                    print(f"Found {len(new_blobs)} new blob(s)")
+                    
                     for blob_path in new_blobs:
                         await self.process_new_data(blob_path)
                 else:
                     logger.debug("No new blobs found")
-                    print("No new blobs found")
+                    
                 
                 await asyncio.sleep(check_interval)
                 
@@ -208,7 +209,7 @@ async def main():
                 sys.exit(1)
             blob_path = sys.argv[2]
             result = await pipeline.manual_trigger(blob_path)
-            print(f"Pipeline completed: {result}")
+            
         else:
             await pipeline.start_scheduler()
             
@@ -217,6 +218,5 @@ async def main():
         sys.exit(1)
 
 
-if __name__ == "__main__":
-    print("initialized")
-    asyncio.run(main())    
+if __name__ == "__main__":    
+    asyncio.run(main())
