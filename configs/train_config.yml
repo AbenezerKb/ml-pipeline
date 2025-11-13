@@ -67,13 +67,10 @@ features:
     - Occupation
     - MaritalStatus
   target: Churn
-  selected_features: ['MonthlyRevenue', 'MonthlyMinutes', 'OverageMinutes', 'UnansweredCalls',
-       'CustomerCareCalls', 'PercChangeMinutes', 'PercChangeRevenues',
-       'ReceivedCalls', 'TotalRecurringCharge', 'CurrentEquipmentDays',
-       'DroppedBlockedCalls', 'MonthsInService', 'ActiveSubs',
-       'RespondsToMailOffers', 'RetentionCalls', 'RetentionOffersAccepted',
-       'MadeCallToRetentionTeam', 'ReferralsMadeBySubscriber', 'CreditRating',
-       'IncomeGroup', 'Occupation', 'PrizmCode','Churn']
+  selected_features: ['MonthlyRevenue', 'MonthlyMinutes', 'TotalRecurringCharge', 'DirectorAssistedCalls', 'PercChangeMinutes','UnansweredCalls', 
+    'CustomerCareCalls', 'OutboundCalls','CallWaitingCalls','MonthsInService','UniqueSubs', 'Handsets','CurrentEquipmentDays','RetentionCalls',
+    'ServiceArea','ChildrenInHH','HandsetWebCapable', 'Homeownership', 'BuysViaMailOrder', 'RespondsToMailOffers', 'HasCreditCard',
+    'NewCellphoneUser', 'NotNewCellphoneUser', 'CreditRating', 'PrizmCode','Occupation']
 
 preprocessing:
   scaler: standard 
@@ -117,16 +114,19 @@ model_params:
     random_state: 42
   
   xgboost:
-    n_estimators: 100
+    n_estimators: 300
     max_depth: 6
-    learning_rate: 0.1
+    learning_rate: 0.03 
+    min_child_weight: 3
     subsample: 0.8
     colsample_bytree: 0.8
     random_state: 42
+  
+
 
 mlflow:
     tracking_uri: "http://mlflow-server:5000"
-    experiment_name: "model_comparison_v1"
+    experiment_name: "model_comparison"
     run_name: "model_comparison"
 
 monitoring:

@@ -8,6 +8,7 @@ from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.preprocessing import OrdinalEncoder, OneHotEncoder, StandardScaler, MinMaxScaler, RobustScaler
 import joblib
 import logging
+from sklearn.impute import SimpleImputer
 import hashlib
 from dataclasses import dataclass
 
@@ -31,7 +32,8 @@ class FeatureEngineering(BaseEstimator, TransformerMixin):
         self._fitted = False
         self.scaler = None
         self.apply_selection = apply_selection
-        
+        self.num_imputer = SimpleImputer(strategy='median')
+        self.cat_imputer = SimpleImputer(strategy='constant', fill_value=self.unknown_token)
         if isinstance(config, (str, Path)):
             config = Path(config)
             with open(config) as f:
@@ -83,14 +85,27 @@ class FeatureEngineering(BaseEstimator, TransformerMixin):
             X = X[available_cols]
         return X
     
-    def create_features(self, X: pd.DataFrame) -> pd.DataFrame:
-        if 'InboundCalls' in X.columns and 'OutboundCalls' in X.columns and 'TotalCalls' not in X.columns:
+    def create_features(self, X: pd.DataFrame) -> pd.DataFrame:        
+
+        if 'CustomerCareCalls' in X.columns and 'RetentionCalls' in X.columns:
+            X['TotalSupportCalls'] = X['CustomerCareCalls'] + X['RetentionCalls']
+            X['SupportCallsRatio'] = X['CustomerCareCalls'] / (X['RetentionCalls'] + 1)
+
+        if 'PercChangeMinutes' in X.columns and 'PercChangeRevenues' in X.columns:
+            X['ChangePattern_Combined'] = (X['PercChangeMinutes'] + X['PercChangeRevenues']) / 2
+            X['ChangePattern_Volatility'] = np.abs(X['PercChangeMinutes'] - X['PercChangeRevenues'])
+
+        if 'InboundCalls' in X.columns and 'OutboundCalls' in X.columns:
             X['TotalCalls'] = X['InboundCalls'] + X['OutboundCalls']
-            if 'TotalCalls' not in self.numerical:
-                self.numerical.append('TotalCalls')
-            if self.apply_selection and 'TotalCalls' not in self.selected_features:
-                self.selected_features.append('TotalCalls')
-        
+            X['CallDirection_Ratio'] = X['InboundCalls'] / (X['OutboundCalls'] + 1)
+        if 'UnansweredCalls' in X.columns and 'TotalCalls' in X.columns:
+            X['UnansweredRate'] = X['UnansweredCalls'] / (X['TotalCalls'] + 1)
+
+        if 'RetentionOffersAccepted' in X.columns and 'RetentionCalls' in X.columns:
+            X['RetentionAcceptanceRate'] = X['RetentionOffersAccepted'] / (X['RetentionCalls'] + 1)
+
+        if 'DroppedBlockedCalls' in X.columns and 'TotalCalls' in X.columns:
+            X['ServiceQualityScore'] = 1 - (X['DroppedBlockedCalls'] / (X['TotalCalls'] + 1))
         return X
     
     def scale_numerical(self, X: pd.DataFrame, is_fit: bool = True) -> pd.DataFrame:
@@ -121,18 +136,18 @@ class FeatureEngineering(BaseEstimator, TransformerMixin):
         if self.apply_selection:
             X = self.drop_features(X)
             self.numerical = [col for col in self.numerical if col in X.columns]
-        
+
         missing_cols = set(self.columns) - set(X.columns)
         if missing_cols:
-            logger.warning(f"First Column {col} missing in transform data. Filling with default/NaN.")            
+            for col in missing_cols:
+                X[col] = self.unknown_token
+            logger.warning(f"Columns {missing_cols} missing in fit data. Filling with default token.")            
+
+        if self.numerical:
+            X[self.numerical] = self.num_imputer.fit_transform(X[self.numerical])
 
         X = self.scale_numerical(X, is_fit=True)
-        
-        missing_cols = set(self.columns) - set(X.columns)
-        if missing_cols:
-            logger.warning(f"Second Column {col} missing in transform data. Filling with default/NaN.")
-            X[col] = self.unknown_token
-        
+
         for col, enc in self.encodings.items():
             col_data = X[col].astype(str)
             if enc.strategy == "mapping":
@@ -169,7 +184,7 @@ class FeatureEngineering(BaseEstimator, TransformerMixin):
                 )
                 ohe.fit(X[[col]])
                 self.encoders[col] = ohe
-        
+
         self._fitted = True
         logger.info(f"Fitted on {len(self.columns)} categorical and {len(self.numerical)} numerical columns")
         return self
@@ -178,20 +193,18 @@ class FeatureEngineering(BaseEstimator, TransformerMixin):
         if not self._fitted:
             raise ValueError("Must call fit() first")
 
-        for col in self.columns:
-            if col not in X.columns:
-                logger.warning(f"Column {col} missing in transform data. Filling with default/NaN.")
-
         X = pd.DataFrame(X).copy()
 
         X = self.create_features(X)
 
         if self.apply_selection:
             X = self.drop_features(X)
-
             numerical = [col for col in self.numerical if col in X.columns]
         else:
             numerical = [col for col in self.numerical if col in X.columns]
+
+        if numerical:
+            X[numerical] = self.num_imputer.transform(X[numerical])
 
         if self.scaler and numerical:
             X[numerical] = self.scaler.transform(X[numerical])
@@ -199,28 +212,65 @@ class FeatureEngineering(BaseEstimator, TransformerMixin):
         results = []
         for col in self.columns:
             if col not in X.columns:
-                logger.warning(f"Column {col} missing in transform data. Filling with default/NaN.")
+                logger.warning(f"Column {col} missing in transform data. Filling with default token.")
                 X[col] = self.unknown_token                
 
             enc = self.encodings[col]
             col_data = X[col].astype(str)
 
             if enc.strategy == "mapping":
-                mapped = col_data.map(self.encoders[col]).fillna(np.nan)
-                results.append(pd.DataFrame(mapped.values, columns=[col], index=X.index))
+                mapping = self.encoders[col]
+
+               
+                non_nan_values = [v for v in mapping.values() if not pd.isna(v)]
+                default_value = 0.0 if non_nan_values else 0.0
+
+              
+                mapped = col_data.map(lambda x: mapping.get(x, default_value))
+
+               
+                if mapped.isna().any():
+                    logger.warning(f"Column {col} has {mapped.isna().sum()} NaN values after mapping, filling with {default_value}")
+                    mapped = mapped.fillna(default_value)
+
+                results.append(pd.DataFrame(mapped, columns=[col], index=X.index))
+
             elif enc.strategy == "ordinal":
                 transformed = self.encoders[col].transform(col_data.to_frame())
+               
+                if pd.DataFrame(transformed).isna().any().any():
+                    logger.warning(f"Column {col} produced NaN in ordinal encoding, filling with -1")
+                    transformed = pd.DataFrame(transformed).fillna(-1).values
                 results.append(pd.DataFrame(transformed, columns=[col], index=X.index))
+
             elif enc.strategy == "onehot":
                 transformed = self.encoders[col].transform(col_data.to_frame())
                 ohe_cols = [f"{col}_{cat}" for cat in self.encoders[col].categories_[0]]
+                if pd.DataFrame(transformed).isna().any().any():
+                    logger.warning(f"Column {col} produced NaN in onehot encoding, filling with 0")
+                    transformed = pd.DataFrame(transformed).fillna(0).values
                 results.append(pd.DataFrame(transformed, columns=ohe_cols, index=X.index))
 
         encoded_df = pd.concat(results, axis=1) if results else pd.DataFrame(index=X.index)
-
         numerical_df = X[numerical] if numerical else pd.DataFrame(index=X.index)
 
         full_df = pd.concat([numerical_df, encoded_df], axis=1)
+
+        if full_df.isna().any().any():
+            logger.warning("NaN values detected in final dataframe, filling with 0")
+            full_df = full_df.fillna(0)
+
+        sanitized_cols = (
+            pd.Index(full_df.columns)
+            .str.strip()
+            .str.lower()
+            .str.replace(r'[^\w]+', '_', regex=True)
+            .str.replace(r'_+', '_', regex=True)
+            .str.strip('_')
+            .str.replace('unk', '__UNK__', case=False)
+        )
+        full_df.columns = sanitized_cols
+
         return full_df
     
     def get_feature_names_out(self) -> List[str]:

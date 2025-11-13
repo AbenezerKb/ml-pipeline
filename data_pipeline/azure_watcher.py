@@ -7,6 +7,8 @@ from azure.storage.blob import BlobServiceClient, BlobProperties
 from azure.core.exceptions import AzureError
 import hashlib
 import json
+from io import BytesIO
+import time
 
 
 from azure.core.exceptions import ResourceExistsError, ResourceNotFoundError
@@ -28,7 +30,7 @@ class AzureBlobWatcher:
         
         self.state_file = Path('.azure_watcher_state.json')
         self.processed_blobs = self._load_state()
-        
+
         self._init_client()
     
     def _init_client(self):
@@ -116,7 +118,6 @@ class AzureBlobWatcher:
 
             if new_blobs:
                 self._save_state()
-            print(f"non {new_blobs}")
             return new_blobs
             
         except AzureError as e:
@@ -181,7 +182,6 @@ class AzureBlobWatcher:
                 blob_client.upload_blob(f, overwrite=True, timeout=300)
     
             logger.info("Successfully uploaded: %s", blob_name)
-            print(f"Upload completed: {blob_name}")
             return blob_name
     
         except AzureError as e:
@@ -189,39 +189,6 @@ class AzureBlobWatcher:
             raise
         except Exception as e:
             logger.error("Unexpected error during upload: %s", e)
-            raise
-
-    async def upload_combined_file(self, local_path: str) -> str:        
-        local_path = Path(local_path)
-        if not local_path.is_file():
-            raise FileNotFoundError(f"Local file not found: {local_path}")
-
-        try:
-            blob_client = self.blob_service_client.get_blob_client(
-                container=self.container_name,
-                blob="data/combined_1.csv" #self.ref_blob_name,
-            )
-
-            logger.info("Uploading %s to container=%s blob=%s",
-                        local_path, self.container_name, self.ref_blob_name)
-
-
-            with open(local_path, "rb") as f:
-                f.seek(0)
-                blob_client.upload_blob(f, overwrite=True, timeout=300)
-            logger.info("Upload completed: %s", self.ref_blob_name)
-            return self.ref_blob_name
-
-        except ResourceNotFoundError:
-            logger.error("Container %s does not exist", self.container_name)
-            raise
-        except ResourceExistsError:
-            logger.warning("Blob already exists – overwriting because overwrite=True")
-        except AzureError as e:
-            logger.error("Azure error while uploading %s: %s", local_path, e)
-            raise
-        except Exception as e:
-            logger.exception("Unexpected error during upload")
             raise
     
     def cleanup_old_state(self, days: int = 30):

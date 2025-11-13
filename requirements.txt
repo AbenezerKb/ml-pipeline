@@ -26,3 +26,4 @@ pytest-trio
 pytest-twisted
 twisted
 pytest-mock
+evidently

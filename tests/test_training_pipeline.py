@@ -45,7 +45,10 @@ def test_main_model_fails_thresholds(mocker, temp_config_file, caplog, monkeypat
 
     model_mock = mocker.Mock()
     model_mock.predict_proba.return_value = np.array([[0.3, 0.7], [0.8, 0.2]])
-    train_inst.train.return_value = (model_mock, "random_forest")
+    train_inst.save_all_artifacts_to_mlflow.return_value = {
+    "best_model": model_mock,
+    "best_model_type": "random_forest"
+}
 
 
     def raise_threshold_error(*args, **kwargs):
@@ -53,6 +56,6 @@ def test_main_model_fails_thresholds(mocker, temp_config_file, caplog, monkeypat
 
     eval_inst.evaluate.side_effect = raise_threshold_error
 
-    from scripts.train import main
+    from scripts.train import train
     with pytest.raises(ValueError, match="Model performance"):
-        main(temp_config_file)
+        train(temp_config_file)

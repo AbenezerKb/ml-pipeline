@@ -2,6 +2,9 @@ import logging
 import asyncio
 from pathlib import Path
 from typing import Dict, Any, List, Tuple
+from evidently import Dataset, DataDefinition, Report
+from evidently.presets import DataDriftPreset
+
 import pandas as pd
 import numpy as np
 from scipy import stats
@@ -147,133 +150,55 @@ class DriftDetector:
             logger.error(f"Error calculating chi-square: {e}")
             return np.nan, np.nan
     
-    async def detect_drift(self, current_data_path: str, reference_data_path: str = None) -> Dict[str, Any]:
+    async def detect_drift(self, current_data_path: pd.DataFrame, reference_data_path: pd.DataFrame) -> Dict[str, Any]:
        
         if not self.enabled:
             logger.info("Drift detection is disabled")
-            return {'enabled': False, 'drift_detected': False}
+            return False
         
-        result = {
-            'enabled': True,
-            'timestamp': datetime.now().isoformat(),
-            'current_data': current_data_path,
-            'reference_data': reference_data_path or self.reference_data_path,
-            'drift_detected': False,
-            'metrics': {},
-            'alerts': []
-        }
         
         try:
 
-            logger.info(f"Loading current data from: {current_data_path}")
-            print("current_data_path")
-            print(current_data_path)
-            print(current_data_path)
-            print(current_data_path)
-            print("end_data_path")
-            current_df = self._load_data(current_data_path)
+            if 'Churn' in reference_data_path.columns:
+                reference_data_path =reference_data_path.drop(columns=['Churn'])
+            if 'Churn' in current_data_path.columns:    
+                current_data_path =current_data_path.drop(columns=['Churn'])
+            common_columns = list(set(reference_data_path.columns) & set(current_data_path.columns))
+
+
+            reference_data_path = reference_data_path[common_columns]
+            current_data_path = current_data_path[common_columns]          
             
-            ref_path = reference_data_path or self.reference_data_path
-            if not ref_path or not Path(ref_path).exists():
-                logger.warning(f"Reference data not found at {ref_path}. Saving current data as reference.")
-                
-                Path(ref_path).parent.mkdir(parents=True, exist_ok=True)
-                if Path(current_data_path).suffix == '.parquet':
-                    current_df.to_parquet(ref_path)
-                else:
-                    current_df.to_parquet(ref_path)
-                
-                return {
-                    **result,
-                    'message': 'Reference data created from current data',
-                    'drift_detected': False
-                }
+            drifted_columns = []
+            drift_report = Report(metrics=[DataDriftPreset()])
+            result = drift_report.run(reference_data=reference_data_path, current_data=current_data_path)
+            important_columns = ['CurrentEquipmentDays','MonthsInService', 'RetentionCalls', 'HandSetWebCapable', 'RespondsToMailOffers', 'MonthlyMinutes',
+            'CreditRating', 'PercChangeMinutes', 'UniqueSubs', 'TotalRecurringCharge', 'BuysViaMailOrder', 'Homeownership']
+            for metric in result.dict()['metrics'][1:]:             
+                if metric['metric_name'].startswith('ValueDrift'):
+                    column_name = metric['config']['column']
+                    drift_value = metric['value']
+                    threshold = metric['config']['threshold']
+                  
+                    if drift_value > threshold and column_name in important_columns:
+                        drifted_columns.append({
+                            'column': column_name,
+                            'drift_score': drift_value,
+                            'threshold': threshold,
+                            'method': metric['config']['method']
+                        })
+
+            drift_detected = len(drifted_columns) > 0
             
-            logger.info(f"Loading reference data from: {ref_path}")
-            reference_df = self._load_data(ref_path)
+            result.save_html("simulated_data_drift_report.html")
             
+            
+            logger.info(f"Drift detection complete")
            
-            if not self.numerical_columns and not self.categorical_columns:
-                numerical_cols, categorical_cols = self._detect_column_types(reference_df)
-            else:
-                numerical_cols = self.numerical_columns
-                categorical_cols = self.categorical_columns
-            
-            logger.info(f"Analyzing {len(numerical_cols)} numerical and {len(categorical_cols)} categorical columns")
-            
-            
-            for col in reference_df.columns:
-                if col not in current_df.columns:
-                    logger.warning(f"Column {col} missing in current data")
-                    continue
-                
-                col_metrics = {
-                    'column': col,
-                    'type': 'numerical' if col in numerical_cols else 'categorical'
-                }
-                
-                if col in numerical_cols:
-                    if 'psi' in self.metrics:
-                        psi = self._calculate_psi(reference_df[col], current_df[col])
-                        col_metrics['psi'] = psi
-                        
-                        threshold = self.thresholds.get('psi', 0.2)
-                        if not np.isnan(psi) and psi >= threshold:
-                            result['drift_detected'] = True
-                            result['alerts'].append(f"{col}: PSI={psi:.4f} exceeds threshold {threshold}")
-                    
-                    if 'ks' in self.metrics:
-                        ks = self._calculate_ks_statistic(reference_df[col], current_df[col])
-                        col_metrics['ks_statistic'] = ks
-                        
-                        threshold = self.thresholds.get('ks', 0.1)
-                        if not np.isnan(ks) and ks >= threshold:
-                            result['drift_detected'] = True
-                            result['alerts'].append(f"{col}: KS={ks:.4f} exceeds threshold {threshold}")
-                    
-                    if 'wasserstein' in self.metrics:
-                        wasserstein = self._calculate_wasserstein_distance(reference_df[col], current_df[col])
-                        col_metrics['wasserstein_distance'] = wasserstein
-                        
-                        threshold = self.thresholds.get('wasserstein', 0.15)
-                        if not np.isnan(wasserstein) and wasserstein >= threshold:
-                            result['drift_detected'] = True
-                            result['alerts'].append(f"{col}: Wasserstein={wasserstein:.4f} exceeds threshold {threshold}")
-                
-                elif col in categorical_cols:
-                    if 'psi' in self.metrics:
-                        psi = self._calculate_psi(reference_df[col], current_df[col])
-                        col_metrics['psi'] = psi
-                        
-                        threshold = self.thresholds.get('psi', 0.2)
-                        if not np.isnan(psi) and psi >= threshold:
-                            result['drift_detected'] = True
-                            result['alerts'].append(f"{col}: PSI={psi:.4f} exceeds threshold {threshold}")
-                    
-                    chi2, p_value = self._calculate_chi_square(reference_df[col], current_df[col])
-                    col_metrics['chi_square'] = chi2
-                    col_metrics['chi_square_p_value'] = p_value
-                    
-                    if not np.isnan(p_value) and p_value < 0.05:
-                        result['drift_detected'] = True
-                        result['alerts'].append(f"{col}: Chi-square p-value={p_value:.4f} indicates drift")
-                
-                result['metrics'][col] = col_metrics
-            
-            result['summary'] = {
-                'total_columns_analyzed': len(result['metrics']),
-                'columns_with_drift': len(result['alerts']),
-                'drift_percentage': len(result['alerts']) / len(result['metrics']) * 100 if result['metrics'] else 0
-            }
-            
-            logger.info(f"Drift detection complete. Drift detected: {result['drift_detected']}")
-            if result['alerts']:
-                for alert in result['alerts']:
-                    logger.warning(f"Drift alert: {alert}")
             
         except Exception as e:
             logger.error(f"Error during drift detection: {e}", exc_info=True)
             result['error'] = str(e)
             result['drift_detected'] = False
         
-        return result
+        return drift_detected

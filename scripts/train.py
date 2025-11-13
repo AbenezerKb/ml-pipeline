@@ -4,6 +4,11 @@ import logging
 import argparse
 import joblib
 import os
+from sklearn.model_selection import cross_val_score
+import mlflow
+import mlflow.sklearn
+import numpy as np
+from mlflow.models.signature import infer_signature
 
 from pipelines.pre_processing import DataPreparation
 from pipelines.feature_engineering import FeatureEngineering
@@ -12,6 +17,7 @@ from pipelines.model_evaluation import ModelEvaluation
 from dotenv import load_dotenv
 import mlflow
 import yaml
+import pandas as pd
 from datetime import datetime
 import tempfile
 
@@ -26,8 +32,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-
-def main(config_path: str):
+def train(config_path: str):
     logger.info("Starting ML Training Pipeline")
     
     with open(config_path, 'r') as f:
@@ -35,7 +40,9 @@ def main(config_path: str):
 
         os.environ['AZURE_STORAGE_ACCOUNT_NAME'] = os.getenv('AZURE_STORAGE_ACCOUNT_NAME')
         os.environ['AZURE_STORAGE_ACCOUNT_KEY'] = os.getenv('AZURE_STORAGE_ACCOUNT_KEY')
-       
+        if Path("/run/secrets/azure_connection_string").exists():
+            azure_connection_string = Path("/run/secrets/azure_connection_string").read_text().strip() 
+            azure_container = Path("/run/secrets/azure_container_name").read_text().strip() if Path("/run/secrets/azure_container_name").exists() else azure_container
         tracking_uri = os.getenv('REGISTRY_URI')
         mlflow.set_tracking_uri(tracking_uri)
 
@@ -49,7 +56,6 @@ def main(config_path: str):
         
         feature_eng = FeatureEngineering(config_path)
         target_col = data_prep.config['features']['target']
-
 
         X_train = train_df.drop(columns=[target_col])
         y_train = train_df[target_col]
@@ -66,7 +72,6 @@ def main(config_path: str):
         y_train_encoded = encode_target(y_train)
         y_test_encoded = encode_target(y_test)
 
-        
         logger.info(f"Original X_train columns: {list(X_train.columns)}")
         logger.info(f"Original X_test columns: {list(X_test.columns)}")
         
@@ -96,33 +101,30 @@ def main(config_path: str):
         fe_path = artifact_dir / "feature_engineer.joblib"
         joblib.dump(feature_eng, fe_path)
         feature_eng.save(Path("artifact"))
-        mlflow.log_artifact("artifact/feature_engineer.joblib", artifact_path="mlflow-artifacts")
         
         
-        model_trainer = ModelTraining(config_path)
         
+        model_trainer = ModelTraining(config_path, feature_engineer=feature_eng)
+                
         
-        X_train_transformed.columns = model_trainer.sanitize_columns(X_train_transformed.columns)
-        X_test_transformed.columns = model_trainer.sanitize_columns(X_test_transformed.columns)
-        
-        logger.info(f"Sanitized train columns: {list(X_train_transformed.columns)}")
-        logger.info(f"Sanitized test columns: {list(X_test_transformed.columns)}")
-        
-        
-        model, model_type = model_trainer.train(X_train_transformed, y_train_encoded)
-        
+        result = model_trainer.save_all_artifacts_to_mlflow(X_train, y_train_encoded)
+        model, model_type = result["best_model"], result["best_model_type"]
+
         logger.info(f"\nModel Evaluation for {model_type}")
         
         
         evaluator = ModelEvaluation(config_path)
-        metrics = evaluator.evaluate(model, X_test_transformed, y_test_encoded, feature_eng)
+        logger.info("Evaluating model on TRANSFORMED test data")
+        metrics = evaluator.evaluate(model, X_test, y_test)
+        
+        
+        predictions = model.predict(X_test)
+        probabilities = model.predict_proba(X_test)[:, 1]
+        result = X_test.copy()
+        
         meets_thresholds = evaluator.check_thresholds(metrics)
 
         
-        predictions = model.predict(X_train_transformed)
-        probabilities = model.predict_proba(X_train_transformed)[:, 1]
-        
-        result = X_train.copy()
         result["prediction"] = predictions
         result["probability"] = probabilities
         now = datetime.now()
@@ -143,16 +145,3 @@ def main(config_path: str):
     except Exception as e:
         logger.error(f"Training pipeline failed: {str(e)}", exc_info=True)
         raise
-
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Train ML model")
-    parser.add_argument(
-        "--config",
-        type=str,
-        default="configs/train_config.yml",
-        help="Path to training config file"
-    )
-    
-    args = parser.parse_args()
-    main(args.config)

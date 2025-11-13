@@ -42,9 +42,32 @@ if [ -f /run/secrets/azure_dvc_container ]; then
   export AZURE_DVC_CONTAINER=$(cat /run/secrets/azure_dvc_container)
 fi
 
+
+export AZURE_STORAGE_ACCOUNT=$AZURE_STORAGE_ACCOUNT_NAME
+export AZURE_STORAGE_KEY=$AZURE_STORAGE_ACCOUNT_KEY
+export AZURE_CONTAINER_NAME=$AZURE_STORAGE_CONTAINER_NAME
+
 touch data/.gitignore
 touch .gitignore
+touch .dvcignore
 mkdir -p data/reference
+
+EXCEPTIONS=(
+  "!data/"
+  "!data/**"
+  "!.dvcignore"
+  "!.gitignore"
+)
+
+echo "*" > .gitignore 
+for item in "${EXCEPTIONS[@]}"; do
+  echo "$item" >> .gitignore
+done
+
+echo "*" > .dvcignore
+for item in "${EXCEPTIONS[@]}"; do
+  echo "$item" >> .dvcignore
+done
 
 git config --global user.name $GIT_USER_NAME
 git config --global user.email $GIT_USER_EMAIL
