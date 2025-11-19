@@ -34,9 +34,9 @@ jobs:
         - name: Test with Pytest
           
           run: |
-            set -a
-            source .env.example
-            set +a
+            # set -a
+            # source .env.example
+            # set +a
             
             
             pytest
